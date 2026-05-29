@@ -35,6 +35,7 @@ public class ItemsUtil {
     private static final String EPISODE_RANGE_SEPARATOR = "[-~_\\uFF5E\\uFF0D\\u2010-\\u2015\\u2212]";
     private static final Pattern BRACKET_EPISODE_RANGE_PATTERN = Pattern.compile("[\\[【](\\d{1,3}(?:\\.5)?)\\s*" + EPISODE_RANGE_SEPARATOR + "+\\s*(\\d{1,3}(?:\\.5)?)[\\]】]");
     private static final Pattern EPISODE_RANGE_PATTERN = Pattern.compile("(?<!\\d)(\\d{1,3}(?:\\.5)?)\\s*" + EPISODE_RANGE_SEPARATOR + "+\\s*(\\d{1,3}(?:\\.5)?)(?!\\d)");
+    private static final Pattern RENAMED_EPISODE_PATTERN = Pattern.compile(StringEnum.SEASON_REG);
 
     /**
      * 获取视频列表
@@ -284,7 +285,54 @@ public class ItemsUtil {
                     }
                     return false;
                 }).toList();
+        setMultiEpisodeTorrentNames(items);
         return distinctItems(items);
+    }
+
+    private static void setMultiEpisodeTorrentNames(List<Item> items) {
+        Map<String, List<Item>> map = items.stream()
+                .filter(item -> Boolean.TRUE.equals(item.getMultiEpisodeTorrent()))
+                .collect(LinkedHashMap::new, (m, item) -> {
+                    String key = StrUtil.blankToDefault(item.getInfoHash(), item.getTorrent());
+                    if (StrUtil.isBlank(key)) {
+                        return;
+                    }
+                    m.computeIfAbsent(key, k -> new ArrayList<>()).add(item);
+                }, Map::putAll);
+
+        for (List<Item> group : map.values()) {
+            if (group.size() < 2) {
+                continue;
+            }
+            group.sort(Comparator.comparing(Item::getEpisode));
+            Item first = group.get(0);
+            Item last = group.get(group.size() - 1);
+            String name = getMultiEpisodeTorrentName(first, last);
+            if (StrUtil.isBlank(name)) {
+                continue;
+            }
+            group.forEach(item -> item.setMultiEpisodeTorrentName(name));
+        }
+    }
+
+    public static String getMultiEpisodeTorrentName(Item first, Item last) {
+        String reName = first.getReName();
+        if (StrUtil.isBlank(reName)) {
+            return first.getMultiEpisodeTorrentName();
+        }
+
+        Matcher matcher = RENAMED_EPISODE_PATTERN.matcher(reName);
+        if (!matcher.find()) {
+            return StrUtil.blankToDefault(first.getMultiEpisodeTorrentName(), reName);
+        }
+
+        String season = matcher.group(1);
+        String startEpisode = matcher.group(2);
+        int width = getEpisodeWidth(startEpisode);
+        String endEpisode = String.format("%0" + width + "d", last.getEpisode().intValue());
+        String range = StrFormatter.format("S{}E{}-{}", season, startEpisode, endEpisode);
+
+        return RenameUtil.getName(reName.substring(0, matcher.start()) + range + reName.substring(matcher.end()));
     }
 
     private static List<Item> distinctItems(List<Item> items) {

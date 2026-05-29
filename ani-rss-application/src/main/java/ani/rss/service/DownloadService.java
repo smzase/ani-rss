@@ -402,7 +402,7 @@ public class DownloadService {
     public synchronized void download(Ani ani, Item item, String savePath, File torrentFile) {
         ani = ObjectUtil.clone(ani);
 
-        String name = item.getReName();
+        String name = getDownloadName(item);
         Boolean ova = ani.getOva();
         Boolean master = item.getMaster();
         String subgroup = item.getSubgroup();
@@ -446,6 +446,13 @@ public class DownloadService {
         NotificationUtil.send(ConfigUtil.CONFIG, ani,
                 StrFormatter.format("{} 添加失败，疑似为坏种", name),
                 NotificationStatusEnum.ERROR);
+    }
+
+    private String getDownloadName(Item item) {
+        if (Boolean.TRUE.equals(item.getMultiEpisodeTorrent()) && StrUtil.isNotBlank(item.getMultiEpisodeTorrentName())) {
+            return item.getMultiEpisodeTorrentName();
+        }
+        return item.getReName();
     }
 
     /**
@@ -513,7 +520,8 @@ public class DownloadService {
                 log.error(e.getMessage(), e);
             }
         }
-        String text = StrFormatter.format("{} 下载完成", name);
+        String notificationName = getNotificationName(ani, torrentsInfo, name, subgroup);
+        String text = StrFormatter.format("{} 下载完成", notificationName);
         if (tags.contains(TorrentsTags.BACK_RSS.getValue())) {
             text = StrFormatter.format("(备用RSS) {}", text);
         }
@@ -526,6 +534,44 @@ public class DownloadService {
         } catch (Exception e) {
             log.error("番剧完结迁移失败 {}", title);
             log.error(e.getMessage(), e);
+        }
+    }
+
+    private String getNotificationName(Ani ani, TorrentsInfo torrentsInfo, String defaultName, String subgroup) {
+        try {
+            List<Item> items = torrentsInfo.getFiles().get()
+                    .stream()
+                    .filter(fileName -> FileUtils.isVideoFormat(FileUtil.extName(fileName)))
+                    .map(fileName -> new File(fileName).getName())
+                    .map(fileName -> new Item()
+                            .setTitle(FileUtil.mainName(fileName))
+                            .setSubgroup(subgroup))
+                    .filter(item -> {
+                        try {
+                            return RenameUtil.rename(ani, item);
+                        } catch (Exception e) {
+                            log.debug(e.getMessage(), e);
+                            return false;
+                        }
+                    })
+                    .filter(item -> Objects.nonNull(item.getEpisode()))
+                    .sorted(Comparator.comparing(Item::getEpisode))
+                    .toList();
+
+            if (items.size() < 2) {
+                return defaultName;
+            }
+            Item first = items.get(0);
+            Item last = items.get(items.size() - 1);
+            if (Objects.equals(first.getEpisode(), last.getEpisode())) {
+                return defaultName;
+            }
+
+            String name = ItemsUtil.getMultiEpisodeTorrentName(first, last);
+            return StrUtil.blankToDefault(name, defaultName);
+        } catch (Exception e) {
+            log.debug(e.getMessage(), e);
+            return defaultName;
         }
     }
 
