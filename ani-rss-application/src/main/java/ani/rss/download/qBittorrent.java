@@ -129,10 +129,9 @@ public class qBittorrent implements BaseDownload {
 
     @Override
     public Boolean download(Ani ani, Item item, String savePath, File torrentFile, Boolean ova) {
-        String name = item.getReName();
-        if (Boolean.TRUE.equals(item.getMultiEpisodeTorrent()) && StrUtil.isNotBlank(item.getMultiEpisodeTorrentName())) {
-            name = item.getMultiEpisodeTorrentName();
-        }
+        String name = Boolean.TRUE.equals(item.getMultiEpisodeTorrent()) && StrUtil.isNotBlank(item.getMultiEpisodeTorrentName())
+                ? item.getMultiEpisodeTorrentName()
+                : item.getReName();
         String host = config.getDownloadToolHost();
         Boolean qbUseDownloadPath = config.getQbUseDownloadPath();
 
@@ -194,7 +193,7 @@ public class qBittorrent implements BaseDownload {
             Optional<TorrentsInfo> optionalTorrentsInfo = torrentsInfos
                     .stream()
                     .filter(torrentsInfo ->
-                            torrentsInfo.getHash().equals(hash) ||
+                            torrentsInfo.getHash().equalsIgnoreCase(hash) ||
                                     torrentsInfo.getName().equals(name)
                     )
                     .findFirst();
