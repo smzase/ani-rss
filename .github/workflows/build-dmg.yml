@@ -2,6 +2,10 @@ name: build-dmg
 
 on:
   workflow_dispatch:
+
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-latest
@@ -29,5 +33,6 @@ jobs:
           tag_name: ${{ env.version }}
           append_body: false
           token: ${{ secrets.GITHUB_TOKEN }}
+          fail_on_unmatched_files: true
           files: |
             ./ani-rss-application/target/ani-rss-macos-main/ani-rss.dmg
