@@ -22,8 +22,11 @@ import wushuo.tmdb.api.entity.Tmdb;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public interface BaseNotification {
+    Pattern NOTIFICATION_EPISODE_RANGE_PATTERN = Pattern.compile("[Ss](\\d+)[Ee](\\d+(?:\\.5)?)(?:\\s*[-~_\\uFF5E\\uFF0D\\u2010-\\u2015\\u2212]\\s*(\\d+(?:\\.5)?))?");
 
     /**
      * 测试
@@ -64,20 +67,22 @@ public interface BaseNotification {
 
         // 集数
         double episode = 1.0;
-        if (ReUtil.contains(StringEnum.SEASON_REG, text)) {
-            episode = Double.parseDouble(ReUtil.get(StringEnum.SEASON_REG, text, 2));
-        }
-
+        String episodeText = NumberFormatUtils.format(episode, 1, 0);
         String episodeFormat = String.format("%02d", (int) episode);
-
-        // x.5
-        if (ItemsUtil.is5(episode)) {
-            episodeFormat = episodeFormat + ".5";
+        Matcher matcher = NOTIFICATION_EPISODE_RANGE_PATTERN.matcher(text);
+        if (matcher.find()) {
+            String startEpisode = matcher.group(2);
+            String endEpisode = matcher.group(3);
+            episode = Double.parseDouble(startEpisode);
+            episodeText = getEpisodeText(startEpisode);
+            episodeFormat = getEpisodeFormat(startEpisode);
+            if (StrUtil.isNotBlank(endEpisode)) {
+                episodeText = episodeText + "~" + getEpisodeText(endEpisode);
+                episodeFormat = episodeFormat + "~" + getEpisodeFormat(endEpisode);
+            }
         }
 
-        notificationTemplate = notificationTemplate.replace("${episode}",
-                NumberFormatUtils.format(episode, 1, 0)
-        );
+        notificationTemplate = notificationTemplate.replace("${episode}", episodeText);
         notificationTemplate = notificationTemplate.replace("${episodeFormat}", episodeFormat);
 
 
@@ -152,5 +157,19 @@ public interface BaseNotification {
         notificationTemplate = notificationTemplate.replace("${notification}", template);
 
         return notificationTemplate.trim();
+    }
+
+    private static String getEpisodeText(String episodeStr) {
+        double episode = Double.parseDouble(episodeStr);
+        return NumberFormatUtils.format(episode, 1, 0);
+    }
+
+    private static String getEpisodeFormat(String episodeStr) {
+        double episode = Double.parseDouble(episodeStr);
+        String episodeFormat = String.format("%02d", (int) episode);
+        if (ItemsUtil.is5(episode)) {
+            episodeFormat = episodeFormat + ".5";
+        }
+        return episodeFormat;
     }
 }
