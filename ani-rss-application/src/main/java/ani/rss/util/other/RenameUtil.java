@@ -60,10 +60,12 @@ public class RenameUtil {
         }
 
         if (StrUtil.isBlank(e)) {
-            return false;
+            if (!Boolean.TRUE.equals(item.getMultiEpisodeTorrent()) || Objects.isNull(item.getEpisode())) {
+                return false;
+            }
         }
 
-        String episodeStr = ReUtil.get("\\d+(\\.5)?", e, 0);
+        String episodeStr = StrUtil.isBlank(e) ? item.getEpisode().toString() : ReUtil.get("\\d+(\\.5)?", e, 0);
         if (StrUtil.isBlank(episodeStr)) {
             return false;
         }
