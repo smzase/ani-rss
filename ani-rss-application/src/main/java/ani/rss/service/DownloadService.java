@@ -668,6 +668,7 @@ public class DownloadService {
         Boolean ova = ani.getOva();
         String reName = item.getReName();
         Double episode = item.getEpisode();
+        Boolean multiEpisodeTorrent = item.getMultiEpisodeTorrent();
 
         String downloadPath = getDownloadPath(ani);
 
@@ -725,7 +726,9 @@ public class DownloadService {
                     return season == Integer.parseInt(seasonStr) && episode == Double.parseDouble(episodeStr);
                 })) {
             // 保存 torrent 下次只校验 torrent 是否存在 ， 可以将config设置到固态硬盘，防止一直唤醒机械硬盘
-            TorrentUtil.saveTorrent(ani, item);
+            if (!Boolean.TRUE.equals(multiEpisodeTorrent)) {
+                TorrentUtil.saveTorrent(ani, item);
+            }
             log.info("本地已存在 {}", reName);
             return true;
         }

@@ -57,6 +57,12 @@ public class Item implements Serializable {
     private Long length;
 
     /**
+     * 多集种子拆分出来的条目
+     */
+    @Schema(description = "多集种子拆分出来的条目")
+    private Boolean multiEpisodeTorrent;
+
+    /**
      * 本地已存在
      */
     @Schema(description = "本地已存在")

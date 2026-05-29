@@ -11,6 +11,7 @@ import ani.rss.enums.StringEnum;
 import ani.rss.enums.TorrentsTags;
 import ani.rss.service.DownloadService;
 import ani.rss.util.basic.HttpReq;
+import ani.rss.util.other.RenameUtil;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.lang.Assert;
@@ -413,7 +414,7 @@ public class qBittorrent implements BaseDownload {
 
         for (FileEntity fileEntity : files) {
             String name = fileEntity.getName();
-            String newPath = getFileReName(name, reName);
+            String newPath = getFileReName(ani, name, reName);
 
             if (
                     FileUtils.isSubtitleFormat(newPath) &&
@@ -472,6 +473,22 @@ public class qBittorrent implements BaseDownload {
 
         log.warn("重命名貌似出现了问题？{}", reName);
         return false;
+    }
+
+    private String getFileReName(Ani ani, String name, String reName) {
+        Item item = new Item()
+                .setTitle(name)
+                .setSubgroup(ani.getSubgroup());
+
+        try {
+            if (RenameUtil.rename(ani, item) && StrUtil.isNotBlank(item.getReName())) {
+                return getFileReName(name, item.getReName());
+            }
+        } catch (Exception e) {
+            log.debug(e.getMessage(), e);
+        }
+
+        return getFileReName(name, reName);
     }
 
     @Override
