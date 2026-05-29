@@ -27,12 +27,14 @@ import java.io.File;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 @Slf4j
 public class ItemsUtil {
 
-    private static final String MULTI_EPISODE_TITLE_REG = "(^|[^\\d])\\d{1,3}(\\.5)?\\s*[-~_～－–—]+\\s*\\d{1,3}(\\.5)?([^\\d]|$)";
+    private static final Pattern MULTI_EPISODE_RANGE_PATTERN = Pattern.compile("(?<!\\d)(\\d{1,3}(?:\\.5)?)\\s*[-~_\\uFF5E\\uFF0D\\u2013\\u2014]+\\s*(\\d{1,3}(?:\\.5)?)(?!\\d)");
 
     /**
      * 获取视频列表
@@ -328,13 +330,14 @@ public class ItemsUtil {
     }
 
     private static List<Item> expandTorrentItems(Item item) {
-        if (!ReUtil.contains(MULTI_EPISODE_TITLE_REG, item.getTitle())) {
+        Matcher matcher = MULTI_EPISODE_RANGE_PATTERN.matcher(item.getTitle());
+        if (!matcher.find()) {
             return List.of(item);
         }
 
         List<TorrentFileItem> torrentFileItems = getTorrentFileItems(item);
         if (torrentFileItems.isEmpty()) {
-            return List.of(item);
+            return expandRangeItems(item, matcher);
         }
 
         return torrentFileItems.stream()
@@ -352,6 +355,49 @@ public class ItemsUtil {
                         .setSubgroup(item.getSubgroup())
                         .setPubDate(item.getPubDate()))
                 .toList();
+    }
+
+    private static List<Item> expandRangeItems(Item item, Matcher matcher) {
+        double start = Double.parseDouble(matcher.group(1));
+        double end = Double.parseDouble(matcher.group(2));
+        if (ItemsUtil.is5(start) || ItemsUtil.is5(end)) {
+            return List.of(item);
+        }
+
+        int startEpisode = (int) start;
+        int endEpisode = (int) end;
+        if (endEpisode < startEpisode || endEpisode - startEpisode > 50) {
+            return List.of(item);
+        }
+
+        int width = Math.max(getEpisodeWidth(matcher.group(1)), getEpisodeWidth(matcher.group(2)));
+        List<Item> items = new ArrayList<>();
+        for (int episode = startEpisode; episode <= endEpisode; episode++) {
+            String episodeText = String.format("%0" + width + "d", episode);
+            String title = matcher.replaceFirst(episodeText);
+            items.add(new Item()
+                    .setTitle(title)
+                    .setReName(title)
+                    .setTorrent(item.getTorrent())
+                    .setInfoHash(item.getInfoHash())
+                    .setEpisode(item.getEpisode())
+                    .setFormatSize(item.getFormatSize())
+                    .setLength(item.getLength())
+                    .setMultiEpisodeTorrent(true)
+                    .setLocal(item.getLocal())
+                    .setMaster(item.getMaster())
+                    .setSubgroup(item.getSubgroup())
+                    .setPubDate(item.getPubDate()));
+        }
+        return items;
+    }
+
+    private static int getEpisodeWidth(String episode) {
+        int index = episode.indexOf(".");
+        if (index < 0) {
+            return episode.length();
+        }
+        return index;
     }
 
     private static String getTorrentFileName(String name) {
