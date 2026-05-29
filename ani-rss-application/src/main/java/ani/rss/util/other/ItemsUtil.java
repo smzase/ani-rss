@@ -20,10 +20,8 @@ import cn.hutool.core.text.StrFormatter;
 import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.*;
 import lombok.extern.slf4j.Slf4j;
-import org.eclipse.bittorrent.TorrentFile;
 import org.w3c.dom.*;
 
-import java.io.File;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -34,7 +32,9 @@ import java.util.regex.Pattern;
 @Slf4j
 public class ItemsUtil {
 
-    private static final Pattern MULTI_EPISODE_RANGE_PATTERN = Pattern.compile("(?<!\\d)(\\d{1,3}(?:\\.5)?)\\s*[-~_\\uFF5E\\uFF0D\\u2013\\u2014]+\\s*(\\d{1,3}(?:\\.5)?)(?!\\d)");
+    private static final String EPISODE_RANGE_SEPARATOR = "[-~_\\uFF5E\\uFF0D\\u2010-\\u2015\\u2212]";
+    private static final Pattern BRACKET_EPISODE_RANGE_PATTERN = Pattern.compile("[\\[【](\\d{1,3}(?:\\.5)?)\\s*" + EPISODE_RANGE_SEPARATOR + "+\\s*(\\d{1,3}(?:\\.5)?)[\\]】]");
+    private static final Pattern EPISODE_RANGE_PATTERN = Pattern.compile("(?<!\\d)(\\d{1,3}(?:\\.5)?)\\s*" + EPISODE_RANGE_SEPARATOR + "+\\s*(\\d{1,3}(?:\\.5)?)(?!\\d)");
 
     /**
      * 获取视频列表
@@ -330,36 +330,43 @@ public class ItemsUtil {
     }
 
     private static List<Item> expandTorrentItems(Item item) {
-        Matcher matcher = MULTI_EPISODE_RANGE_PATTERN.matcher(item.getTitle());
-        if (!matcher.find()) {
+        EpisodeRange episodeRange = getEpisodeRange(item.getTitle());
+        if (Objects.isNull(episodeRange)) {
             return List.of(item);
         }
 
-        List<TorrentFileItem> torrentFileItems = getTorrentFileItems(item);
-        if (torrentFileItems.isEmpty()) {
-            return expandRangeItems(item, matcher);
-        }
-
-        return torrentFileItems.stream()
-                .map(torrentFileItem -> new Item()
-                        .setTitle(getTorrentFileName(torrentFileItem.name()))
-                        .setReName(getTorrentFileName(torrentFileItem.name()))
-                        .setTorrent(item.getTorrent())
-                        .setInfoHash(item.getInfoHash())
-                        .setEpisode(item.getEpisode())
-                        .setFormatSize(FileUtils.formatSize(torrentFileItem.length(), true))
-                        .setLength(torrentFileItem.length())
-                        .setMultiEpisodeTorrent(true)
-                        .setLocal(item.getLocal())
-                        .setMaster(item.getMaster())
-                        .setSubgroup(item.getSubgroup())
-                        .setPubDate(item.getPubDate()))
-                .toList();
+        return expandRangeItems(item, episodeRange);
     }
 
-    private static List<Item> expandRangeItems(Item item, Matcher matcher) {
-        double start = Double.parseDouble(matcher.group(1));
-        double end = Double.parseDouble(matcher.group(2));
+    private static EpisodeRange getEpisodeRange(String title) {
+        Matcher matcher = BRACKET_EPISODE_RANGE_PATTERN.matcher(title);
+        if (matcher.find()) {
+            return new EpisodeRange(
+                    matcher.group(1),
+                    matcher.group(2),
+                    matcher.start(),
+                    matcher.end(),
+                    true
+            );
+        }
+
+        matcher = EPISODE_RANGE_PATTERN.matcher(title);
+        if (matcher.find()) {
+            return new EpisodeRange(
+                    matcher.group(1),
+                    matcher.group(2),
+                    matcher.start(),
+                    matcher.end(),
+                    false
+            );
+        }
+
+        return null;
+    }
+
+    private static List<Item> expandRangeItems(Item item, EpisodeRange episodeRange) {
+        double start = Double.parseDouble(episodeRange.startEpisode());
+        double end = Double.parseDouble(episodeRange.endEpisode());
         if (ItemsUtil.is5(start) || ItemsUtil.is5(end)) {
             return List.of(item);
         }
@@ -370,11 +377,13 @@ public class ItemsUtil {
             return List.of(item);
         }
 
-        int width = Math.max(getEpisodeWidth(matcher.group(1)), getEpisodeWidth(matcher.group(2)));
+        log.debug("展开多集种子 {} => {}-{}", item.getTitle(), startEpisode, endEpisode);
+
+        int width = Math.max(getEpisodeWidth(episodeRange.startEpisode()), getEpisodeWidth(episodeRange.endEpisode()));
         List<Item> items = new ArrayList<>();
         for (int episode = startEpisode; episode <= endEpisode; episode++) {
             String episodeText = String.format("%0" + width + "d", episode);
-            String title = replaceEpisodeRange(item.getTitle(), matcher, episodeText);
+            String title = replaceEpisodeRange(item.getTitle(), episodeRange, episodeText);
             items.add(new Item()
                     .setTitle(title)
                     .setReName(title)
@@ -392,13 +401,13 @@ public class ItemsUtil {
         return items;
     }
 
-    private static String replaceEpisodeRange(String title, Matcher matcher, String episodeText) {
-        int start = matcher.start();
-        int end = matcher.end();
-        if (start > 0 && end < title.length() && title.charAt(start - 1) == '[' && title.charAt(end) == ']') {
-            return title.substring(0, start - 1).trim()
+    private static String replaceEpisodeRange(String title, EpisodeRange episodeRange, String episodeText) {
+        int start = episodeRange.startIndex();
+        int end = episodeRange.endIndex();
+        if (episodeRange.bracketed()) {
+            return title.substring(0, start).trim()
                     + " - " + episodeText + " "
-                    + title.substring(end + 1).trim();
+                    + title.substring(end).trim();
         }
         return title.substring(0, start)
                 + episodeText
@@ -413,83 +422,7 @@ public class ItemsUtil {
         return index;
     }
 
-    private static String getTorrentFileName(String name) {
-        name = name.replace("\\", "/");
-        int index = name.lastIndexOf("/");
-        if (index < 0) {
-            return name;
-        }
-        return name.substring(index + 1);
-    }
-
-    private static List<TorrentFileItem> getTorrentFileItems(Item item) {
-        String torrent = item.getTorrent();
-        if (StrUtil.isBlank(torrent)) {
-            return List.of();
-        }
-        if (ReUtil.contains(StringEnum.MAGNET_REG, torrent) || ReUtil.contains(StringEnum.ED2K_REG, torrent)) {
-            return List.of();
-        }
-
-        String cacheKey = "torrent-files:" + item.getInfoHash();
-        List<TorrentFileItem> cache = CacheUtils.get(cacheKey);
-        if (Objects.nonNull(cache)) {
-            return cache;
-        }
-
-        File tempFile = FileUtil.createTempFile();
-        try {
-            Config config = ConfigUtil.CONFIG;
-            HttpReq.get(torrent)
-                    .timeout(config.getRssTimeout() * 1000)
-                    .then(res -> {
-                        if (res.getStatus() == 404) {
-                            return;
-                        }
-                        HttpReq.assertStatus(res);
-                        FileUtil.writeFromStream(res.bodyStream(), tempFile, true);
-                    });
-
-            TorrentFile torrentFile = new TorrentFile(tempFile);
-            String[] filenames = torrentFile.getFilenames();
-            long[] lengths = torrentFile.getLengths();
-            List<TorrentFileItem> torrentFileItems = new ArrayList<>();
-
-            for (int index = 0; index < filenames.length; index++) {
-                String name = filenames[index];
-                name = CharsetUtil.convert(name, "ISO-8859-1", CharsetUtil.UTF_8);
-                name = ReUtil.replaceAll(name, "[\\\\/]$", "");
-                name = name.replace("\\", "/");
-
-                if (StrUtil.isBlank(name)) {
-                    continue;
-                }
-                if (name.startsWith("_____padding_file_") && name.contains("BitComet")) {
-                    continue;
-                }
-
-                String extName = FileUtil.extName(name);
-                if (StrUtil.isBlank(extName) || !FileUtils.isVideoFormat(extName)) {
-                    continue;
-                }
-
-                long length = index < lengths.length ? lengths[index] : 0;
-                torrentFileItems.add(new TorrentFileItem(name, length));
-            }
-
-            CacheUtils.put(cacheKey, torrentFileItems, TimeUnit.MINUTES.toMillis(30));
-            return torrentFileItems;
-        } catch (Exception e) {
-            log.warn("读取种子文件列表失败: {}", item.getTitle());
-            log.debug(e.getMessage(), e);
-            CacheUtils.put(cacheKey, List.of(), TimeUnit.MINUTES.toMillis(5));
-            return List.of();
-        } finally {
-            FileUtil.del(tempFile);
-        }
-    }
-
-    private record TorrentFileItem(String name, long length) {
+    private record EpisodeRange(String startEpisode, String endEpisode, int startIndex, int endIndex, boolean bracketed) {
     }
 
     /**
