@@ -92,6 +92,7 @@ public class DownloadService {
 
         // 实时保存文件
         boolean sync = false;
+        Set<String> downloadedMultiEpisodeHashes = new HashSet<>();
 
         for (Item item : items) {
             log.debug(JSONUtil.formatJsonStr(GsonStatic.toJson(item)));
@@ -104,10 +105,19 @@ public class DownloadService {
             Double episode = item.getEpisode();
             // .5 集
             boolean is5 = ItemsUtil.is5(episode);
+            boolean multiEpisodeTorrent = Boolean.TRUE.equals(item.getMultiEpisodeTorrent());
 
             // 已经下载过
-            if (torrent.exists()) {
+            if (!multiEpisodeTorrent && torrent.exists()) {
                 log.debug("种子记录已存在 {}", reName);
+                if (master && !is5) {
+                    currentDownloadCount++;
+                }
+                continue;
+            }
+
+            if (multiEpisodeTorrent && downloadedMultiEpisodeHashes.contains(hash)) {
+                log.debug("多集种子本轮已添加 hash:{} name:{}", hash, reName);
                 if (master && !is5) {
                     currentDownloadCount++;
                 }
@@ -240,6 +250,9 @@ public class DownloadService {
             sync = true;
 
             download(ani, item, savePath, saveTorrent);
+            if (multiEpisodeTorrent) {
+                downloadedMultiEpisodeHashes.add(hash);
+            }
 
             if (master && !is5) {
                 currentDownloadCount++;
@@ -684,7 +697,9 @@ public class DownloadService {
                     continue;
                 }
                 log.info("已存在下载任务 {}", reName);
-                TorrentUtil.saveTorrent(ani, item);
+                if (!Boolean.TRUE.equals(multiEpisodeTorrent)) {
+                    TorrentUtil.saveTorrent(ani, item);
+                }
                 return true;
             }
         }
