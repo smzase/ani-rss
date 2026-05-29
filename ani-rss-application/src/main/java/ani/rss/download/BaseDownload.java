@@ -72,6 +72,17 @@ public interface BaseDownload {
     Boolean rename(TorrentsInfo torrentsInfo);
 
     /**
+     * 修改任务名称
+     *
+     * @param torrentsInfo 任务
+     * @param name         新名称
+     * @return 状态
+     */
+    default Boolean renameTorrent(TorrentsInfo torrentsInfo, String name) {
+        return false;
+    }
+
+    /**
      * 为任务添加标签
      *
      * @param torrentsInfo 任务

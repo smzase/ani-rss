@@ -63,6 +63,12 @@ public class Item implements Serializable {
     private Boolean multiEpisodeTorrent;
 
     /**
+     * 多集种子任务名
+     */
+    @Schema(description = "多集种子任务名")
+    private String multiEpisodeTorrentName;
+
+    /**
      * 本地已存在
      */
     @Schema(description = "本地已存在")

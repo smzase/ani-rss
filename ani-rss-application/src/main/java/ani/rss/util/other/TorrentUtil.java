@@ -276,6 +276,23 @@ public class TorrentUtil {
     }
 
     /**
+     * 修改下载器中的任务名称
+     *
+     * @param torrentsInfo 任务
+     * @param name         新名称
+     */
+    public static void renameTorrent(TorrentsInfo torrentsInfo, String name) {
+        if (StrUtil.isBlank(name)) {
+            return;
+        }
+        try {
+            DOWNLOAD.renameTorrent(torrentsInfo, name);
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+        }
+    }
+
+    /**
      * 添加标签
      *
      * @param torrentsInfo

@@ -381,6 +381,7 @@ public class ItemsUtil {
 
         int width = Math.max(getEpisodeWidth(episodeRange.startEpisode()), getEpisodeWidth(episodeRange.endEpisode()));
         List<Item> items = new ArrayList<>();
+        String multiEpisodeTorrentName = RenameUtil.getName(item.getTitle());
         for (int episode = startEpisode; episode <= endEpisode; episode++) {
             String episodeText = String.format("%0" + width + "d", episode);
             String title = replaceEpisodeRange(item.getTitle(), episodeRange, episodeText);
@@ -393,6 +394,7 @@ public class ItemsUtil {
                     .setFormatSize(item.getFormatSize())
                     .setLength(item.getLength())
                     .setMultiEpisodeTorrent(true)
+                    .setMultiEpisodeTorrentName(multiEpisodeTorrentName)
                     .setLocal(item.getLocal())
                     .setMaster(item.getMaster())
                     .setSubgroup(item.getSubgroup())

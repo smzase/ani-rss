@@ -452,6 +452,8 @@ public class AniController extends BaseController {
         List<Item> items = ItemsUtil.getItems(ani);
 
         String downloadPath = downloadService.getDownloadPath(ani);
+        Boolean login = TorrentUtil.login();
+        List<TorrentsInfo> torrentsInfos = login ? TorrentUtil.getTorrentsInfos() : new ArrayList<>();
 
         for (Item item : items) {
             item.setLocal(false);
@@ -459,6 +461,16 @@ public class AniController extends BaseController {
             if (!Boolean.TRUE.equals(item.getMultiEpisodeTorrent()) && torrent.exists()) {
                 item.setLocal(true);
                 continue;
+            }
+            if (Boolean.TRUE.equals(item.getMultiEpisodeTorrent())) {
+                String hash = FileUtil.mainName(torrent).trim().toLowerCase();
+                if (torrentsInfos.stream()
+                        .anyMatch(torrentsInfo ->
+                                hash.equalsIgnoreCase(torrentsInfo.getHash()) &&
+                                        downloadPath.equalsIgnoreCase(torrentsInfo.getDownloadDir()))) {
+                    item.setLocal(true);
+                    continue;
+                }
             }
             if (downloadService.itemDownloaded(ani, item, false)) {
                 item.setLocal(true);

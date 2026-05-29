@@ -130,6 +130,9 @@ public class qBittorrent implements BaseDownload {
     @Override
     public Boolean download(Ani ani, Item item, String savePath, File torrentFile, Boolean ova) {
         String name = item.getReName();
+        if (Boolean.TRUE.equals(item.getMultiEpisodeTorrent()) && StrUtil.isNotBlank(item.getMultiEpisodeTorrentName())) {
+            name = item.getMultiEpisodeTorrentName();
+        }
         String host = config.getDownloadToolHost();
         Boolean qbUseDownloadPath = config.getQbUseDownloadPath();
 
@@ -196,10 +199,18 @@ public class qBittorrent implements BaseDownload {
                     )
                     .findFirst();
             if (optionalTorrentsInfo.isPresent()) {
+                renameMultiEpisodeTorrent(item, optionalTorrentsInfo.get(), name);
                 return true;
             }
         }
         return false;
+    }
+
+    private void renameMultiEpisodeTorrent(Item item, TorrentsInfo torrentsInfo, String name) {
+        if (!Boolean.TRUE.equals(item.getMultiEpisodeTorrent())) {
+            return;
+        }
+        renameTorrent(torrentsInfo, name);
     }
 
     /**
@@ -353,7 +364,7 @@ public class qBittorrent implements BaseDownload {
     public Boolean rename(TorrentsInfo torrentsInfo) {
         String reName = torrentsInfo.getName();
 
-        if (StrUtil.isBlank(reName) || !ReUtil.contains(StringEnum.SEASON_REG, reName)) {
+        if (StrUtil.isBlank(reName) || (!ReUtil.contains(StringEnum.SEASON_REG, reName) && !isMultiEpisodeTorrentName(reName))) {
             // 剧场版 OR OVA 直接开始任务
             Boolean start = start(torrentsInfo, config);
             Assert.isTrue(start, "开始任务失败 {}", reName);
@@ -473,6 +484,29 @@ public class qBittorrent implements BaseDownload {
 
         log.warn("重命名貌似出现了问题？{}", reName);
         return false;
+    }
+
+    private boolean isMultiEpisodeTorrentName(String name) {
+        return ReUtil.contains("[\\[【]\\d{1,3}(\\.5)?[-~_～－‐-―−]\\d{1,3}(\\.5)?[\\]】]", name) ||
+                ReUtil.contains("(^|[^\\d])\\d{1,3}(\\.5)?[-~_～－‐-―−]\\d{1,3}(\\.5)?([^\\d]|$)", name);
+    }
+
+    @Override
+    public Boolean renameTorrent(TorrentsInfo torrentsInfo, String name) {
+        if (StrUtil.isBlank(name)) {
+            return false;
+        }
+        String oldName = torrentsInfo.getName();
+        if (name.equals(oldName)) {
+            return true;
+        }
+        String host = config.getDownloadToolHost();
+        String hash = torrentsInfo.getHash();
+        log.info("修改 qBittorrent 任务名称 {} ==> {}", oldName, name);
+        return HttpReq.post(host + "/api/v2/torrents/rename")
+                .form("hash", hash)
+                .form("name", name)
+                .thenFunction(HttpResponse::isOk);
     }
 
     private String getFileReName(Ani ani, String name, String reName) {

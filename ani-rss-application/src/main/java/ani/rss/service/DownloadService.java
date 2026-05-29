@@ -205,11 +205,16 @@ public class DownloadService {
             }
 
             // 已经下载过
-            if (torrentsInfos
+            Optional<TorrentsInfo> existingTorrent = torrentsInfos
                     .stream()
-                    .anyMatch(torrentsInfo ->
+                    .filter(torrentsInfo ->
                             // hash 相同
-                            torrentsInfo.getHash().equals(hash))) {
+                            torrentsInfo.getHash().equalsIgnoreCase(hash))
+                    .findFirst();
+            if (existingTorrent.isPresent()) {
+                if (multiEpisodeTorrent && StrUtil.isNotBlank(item.getMultiEpisodeTorrentName())) {
+                    TorrentUtil.renameTorrent(existingTorrent.get(), item.getMultiEpisodeTorrentName());
+                }
                 log.info("已有下载任务 hash:{} name:{}", hash, reName);
                 if (master && !is5) {
                     currentDownloadCount++;
@@ -704,42 +709,10 @@ public class DownloadService {
             }
         }
 
-        List<File> files = FileUtils.listFileList(downloadPath);
+        List<File> files = listVideoFiles(downloadPath);
 
         if (files.stream()
-                .filter(file -> {
-                    if (file.isFile()) {
-                        String extName = FileUtil.extName(file);
-                        if (StrUtil.isBlank(extName)) {
-                            return false;
-                        }
-                        return FileUtils.isVideoFormat(extName);
-                    }
-                    return true;
-                })
-                .anyMatch(file -> {
-                    if (ova) {
-                        return true;
-                    }
-
-                    String mainName = FileUtil.mainName(file);
-                    if (StrUtil.isBlank(mainName)) {
-                        return false;
-                    }
-                    mainName = mainName.trim().toUpperCase();
-                    if (!ReUtil.contains(StringEnum.SEASON_REG, mainName)) {
-                        return false;
-                    }
-
-                    String seasonStr = ReUtil.get(StringEnum.SEASON_REG, mainName, 1);
-
-                    String episodeStr = ReUtil.get(StringEnum.SEASON_REG, mainName, 2);
-
-                    if (StrUtil.isBlank(seasonStr) || StrUtil.isBlank(episodeStr)) {
-                        return false;
-                    }
-                    return season == Integer.parseInt(seasonStr) && episode == Double.parseDouble(episodeStr);
-                })) {
+                .anyMatch(file -> fileMatchesEpisode(ani, item, file))) {
             // 保存 torrent 下次只校验 torrent 是否存在 ， 可以将config设置到固态硬盘，防止一直唤醒机械硬盘
             if (!Boolean.TRUE.equals(multiEpisodeTorrent)) {
                 TorrentUtil.saveTorrent(ani, item);
@@ -748,6 +721,61 @@ public class DownloadService {
             return true;
         }
         return false;
+    }
+
+    private boolean fileMatchesEpisode(Ani ani, Item item, File file) {
+        if (ani.getOva()) {
+            return true;
+        }
+
+        Integer season = ani.getSeason();
+        Double episode = item.getEpisode();
+        String mainName = FileUtil.mainName(file);
+        if (StrUtil.isBlank(mainName)) {
+            return false;
+        }
+
+        String upperMainName = mainName.trim().toUpperCase();
+        if (ReUtil.contains(StringEnum.SEASON_REG, upperMainName)) {
+            String seasonStr = ReUtil.get(StringEnum.SEASON_REG, upperMainName, 1);
+            String episodeStr = ReUtil.get(StringEnum.SEASON_REG, upperMainName, 2);
+            if (StrUtil.isBlank(seasonStr) || StrUtil.isBlank(episodeStr)) {
+                return false;
+            }
+            return season == Integer.parseInt(seasonStr) && episode == Double.parseDouble(episodeStr);
+        }
+
+        Item fileItem = new Item()
+                .setTitle(mainName)
+                .setSubgroup(item.getSubgroup());
+        if (!RenameUtil.rename(ani, fileItem)) {
+            return false;
+        }
+        return Objects.equals(fileItem.getEpisode(), episode);
+    }
+
+    private List<File> listVideoFiles(String downloadPath) {
+        List<File> files = new ArrayList<>();
+        Deque<File> deque = new ArrayDeque<>(List.of(new File(downloadPath)));
+        while (!deque.isEmpty()) {
+            File file = deque.removeFirst();
+            if (!file.exists()) {
+                continue;
+            }
+            if (file.isDirectory()) {
+                deque.addAll(List.of(FileUtils.listFiles(file)));
+                continue;
+            }
+
+            String extName = FileUtil.extName(file);
+            if (StrUtil.isBlank(extName)) {
+                continue;
+            }
+            if (FileUtils.isVideoFormat(extName)) {
+                files.add(file);
+            }
+        }
+        return files;
     }
 
     /**
