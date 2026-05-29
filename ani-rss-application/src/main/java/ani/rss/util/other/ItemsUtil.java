@@ -374,13 +374,13 @@ public class ItemsUtil {
         List<Item> items = new ArrayList<>();
         for (int episode = startEpisode; episode <= endEpisode; episode++) {
             String episodeText = String.format("%0" + width + "d", episode);
-            String title = matcher.replaceFirst(episodeText);
+            String title = replaceEpisodeRange(item.getTitle(), matcher, episodeText);
             items.add(new Item()
                     .setTitle(title)
                     .setReName(title)
                     .setTorrent(item.getTorrent())
                     .setInfoHash(item.getInfoHash())
-                    .setEpisode(item.getEpisode())
+                    .setEpisode((double) episode)
                     .setFormatSize(item.getFormatSize())
                     .setLength(item.getLength())
                     .setMultiEpisodeTorrent(true)
@@ -390,6 +390,19 @@ public class ItemsUtil {
                     .setPubDate(item.getPubDate()));
         }
         return items;
+    }
+
+    private static String replaceEpisodeRange(String title, Matcher matcher, String episodeText) {
+        int start = matcher.start();
+        int end = matcher.end();
+        if (start > 0 && end < title.length() && title.charAt(start - 1) == '[' && title.charAt(end) == ']') {
+            return title.substring(0, start - 1).trim()
+                    + " - " + episodeText + " "
+                    + title.substring(end + 1).trim();
+        }
+        return title.substring(0, start)
+                + episodeText
+                + title.substring(end);
     }
 
     private static int getEpisodeWidth(String episode) {
