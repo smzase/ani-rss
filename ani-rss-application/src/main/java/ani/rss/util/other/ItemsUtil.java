@@ -378,12 +378,21 @@ public class ItemsUtil {
     }
 
     private static List<Item> expandTorrentItems(Item item) {
+        if (!isMultiEpisodeTorrentSupported()) {
+            return List.of(item);
+        }
+
         EpisodeRange episodeRange = getEpisodeRange(item.getTitle());
         if (Objects.isNull(episodeRange)) {
             return List.of(item);
         }
 
         return expandRangeItems(item, episodeRange);
+    }
+
+    private static boolean isMultiEpisodeTorrentSupported() {
+        Config config = ConfigUtil.CONFIG;
+        return Objects.nonNull(config) && "qBittorrent".equals(config.getDownloadToolType());
     }
 
     private static EpisodeRange getEpisodeRange(String title) {
