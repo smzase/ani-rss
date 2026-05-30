@@ -106,6 +106,7 @@ public class DownloadService {
             // .5 集
             boolean is5 = ItemsUtil.is5(episode);
             boolean multiEpisodeTorrent = Boolean.TRUE.equals(item.getMultiEpisodeTorrent());
+            List<Item> sameTorrentItems = multiEpisodeTorrent ? getSameTorrentItems(ani, items, hash) : List.of(item);
 
             // 已经下载过
             if (!multiEpisodeTorrent && torrent.exists()) {
@@ -167,41 +168,8 @@ public class DownloadService {
             }
 
             // 仅在主RSS更新后删除备用RSS
-            if (delete && master && deleteStandbyRSSOnly) {
-                TorrentsInfo standbyRSS = torrentsInfos
-                        .stream()
-                        .filter(torrentsInfo -> {
-                            if (!torrentsInfo.getDownloadDir().equals(savePath)) {
-                                return false;
-                            }
-                            if (!ReUtil.contains(StringEnum.SEASON_REG, torrentsInfo.getName())) {
-                                return false;
-                            }
-                            String s = ReUtil.get(StringEnum.SEASON_REG, torrentsInfo.getName(), 0);
-                            if (!s.equals(ReUtil.get(StringEnum.SEASON_REG, reName, 0))) {
-                                return false;
-                            }
-                            List<String> tags = torrentsInfo.getTags();
-                            // 包含 备用RSS 标签或者 无主RSS字幕组信息
-                            return tags.contains(TorrentsTags.BACK_RSS.getValue()) ||
-                                    !tags.contains(ani.getSubgroup());
-                        })
-                        .findFirst()
-                        .orElse(null);
-
-                if (Objects.nonNull(standbyRSS)) {
-                    List<String> tags = standbyRSS.getTags();
-                    if (!tags.contains(TorrentsTags.RENAME.getValue())) {
-                        // 未完成重命名
-                        continue;
-                    }
-                    if (!TorrentUtil.delete(standbyRSS)) {
-                        log.debug("备用RSS可能还未做种完成 {}", standbyRSS.getName());
-                        // 删除失败或者不允许删除
-                        continue;
-                    }
-                    torrentsInfos.remove(standbyRSS);
-                }
+            if (delete && master && deleteStandbyRSSOnly && !deleteStandbyRssOnly(ani, sameTorrentItems, savePath, torrentsInfos)) {
+                continue;
             }
 
             // 已经下载过
@@ -246,7 +214,7 @@ public class DownloadService {
                 continue;
             }
 
-            deleteStandbyRss(ani, item);
+            deleteStandbyRss(ani, sameTorrentItems);
 
             if (!AniUtil.ANI_LIST.contains(ani)) {
                 return;
@@ -286,6 +254,73 @@ public class DownloadService {
             NotificationUtil.send(config, ani, StrFormatter.format("{} 订阅已完结", title), NotificationStatusEnum.COMPLETED);
             ani.setEnable(false);
             AniUtil.sync();
+        }
+    }
+
+    private List<Item> getSameTorrentItems(Ani ani, List<Item> items, String hash) {
+        return items.stream()
+                .filter(item -> Boolean.TRUE.equals(item.getMultiEpisodeTorrent()))
+                .filter(item -> hash.equals(FileUtil.mainName(TorrentUtil.getTorrent(ani, item)).trim().toLowerCase()))
+                .toList();
+    }
+
+    private Boolean deleteStandbyRssOnly(Ani ani, List<Item> items, String savePath, List<TorrentsInfo> torrentsInfos) {
+        for (Item item : items) {
+            String reName = getSeasonEpisodeName(item);
+            if (StrUtil.isBlank(reName)) {
+                continue;
+            }
+
+            TorrentsInfo standbyRSS = torrentsInfos
+                    .stream()
+                    .filter(torrentsInfo -> {
+                        if (!torrentsInfo.getDownloadDir().equals(savePath)) {
+                            return false;
+                        }
+                        if (!ReUtil.contains(StringEnum.SEASON_REG, torrentsInfo.getName())) {
+                            return false;
+                        }
+                        String s = ReUtil.get(StringEnum.SEASON_REG, torrentsInfo.getName(), 0);
+                        if (!s.equals(reName)) {
+                            return false;
+                        }
+                        List<String> tags = torrentsInfo.getTags();
+                        // 包含 备用RSS 标签或者 无主RSS字幕组信息
+                        return tags.contains(TorrentsTags.BACK_RSS.getValue()) ||
+                                !tags.contains(ani.getSubgroup());
+                    })
+                    .findFirst()
+                    .orElse(null);
+
+            if (Objects.isNull(standbyRSS)) {
+                continue;
+            }
+            List<String> tags = standbyRSS.getTags();
+            if (!tags.contains(TorrentsTags.RENAME.getValue())) {
+                // 未完成重命名
+                return false;
+            }
+            if (!TorrentUtil.delete(standbyRSS)) {
+                log.debug("备用RSS可能还未做种完成 {}", standbyRSS.getName());
+                // 删除失败或者不允许删除
+                return false;
+            }
+            torrentsInfos.remove(standbyRSS);
+        }
+        return true;
+    }
+
+    private String getSeasonEpisodeName(Item item) {
+        String reName = item.getReName();
+        if (!ReUtil.contains(StringEnum.SEASON_REG, reName)) {
+            return "";
+        }
+        return ReUtil.get(StringEnum.SEASON_REG, reName, 0);
+    }
+
+    private void deleteStandbyRss(Ani ani, List<Item> items) {
+        for (Item item : items) {
+            deleteStandbyRss(ani, item);
         }
     }
 
