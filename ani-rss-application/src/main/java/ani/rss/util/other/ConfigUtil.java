@@ -117,6 +117,7 @@ public class ConfigUtil {
                 .setMikanHost("https://mikanani.me")
                 .setTmdbApi("https://api.themoviedb.org")
                 .setTmdbApiKey("")
+                .setTmdbImage("https://image.tmdb.org")
                 .setTmdbAnime(true)
                 .setRenameSleepSeconds(10)
                 .setRename(true)
@@ -234,6 +235,7 @@ public class ConfigUtil {
                 .setReverseProxyTrustIpListEnabled(false)
                 .setSubtitleIndependentFolderEnabled(false)
                 .setSubtitleIndependentFolderName("Subs")
+                .setBgmApi("https://api.bgm.tv")
                 .setUuid(UUID.randomUUID().toString());
     }
 

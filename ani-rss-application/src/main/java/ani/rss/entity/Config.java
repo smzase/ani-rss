@@ -34,6 +34,9 @@ public class Config implements Serializable {
     @Schema(description = "TMDB API Key")
     private String tmdbApiKey;
 
+    @Schema(description = "TMDB IMAGE")
+    private String tmdbImage;
+
     /**
      * 仅获取动漫
      */
@@ -708,6 +711,9 @@ public class Config implements Serializable {
 
     @Schema(description = "字幕独立文件夹")
     private String subtitleIndependentFolderName;
+
+    @Schema(description = "bgmApi")
+    private String bgmApi;
 
     @Schema(description = "唯一ID")
     private String uuid;
