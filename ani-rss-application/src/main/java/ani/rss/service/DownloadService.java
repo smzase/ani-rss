@@ -107,6 +107,7 @@ public class DownloadService {
             boolean is5 = ItemsUtil.is5(episode);
             boolean multiEpisodeTorrent = Boolean.TRUE.equals(item.getMultiEpisodeTorrent());
             List<Item> sameTorrentItems = multiEpisodeTorrent ? getSameTorrentItems(ani, items, hash) : List.of(item);
+            boolean replaceStandbyRssItem = shouldReplaceStandbyRssItem(ani, item, savePath, torrentsInfos);
 
             // 已经下载过
             if (!multiEpisodeTorrent && torrent.exists()) {
@@ -134,7 +135,7 @@ public class DownloadService {
             }
 
             // 只下载最新集
-            if (downloadNew) {
+            if (downloadNew && !replaceStandbyRssItem) {
                 Item newItem = items.get(items.size() - 1);
 
                 // 日期一致也可下载, 防止字幕组同时发多集
@@ -322,6 +323,44 @@ public class DownloadService {
         for (Item item : items) {
             deleteStandbyRss(ani, item);
         }
+    }
+
+    private boolean shouldReplaceStandbyRssItem(Ani ani, Item item, String savePath, List<TorrentsInfo> torrentsInfos) {
+        if (!isMasterReplaceStandbyMode(item)) {
+            return false;
+        }
+
+        String reName = getSeasonEpisodeName(item);
+        if (StrUtil.isBlank(reName)) {
+            return false;
+        }
+
+        boolean hasStandbyTorrent = torrentsInfos.stream()
+                .filter(torrentsInfo -> savePath.equals(torrentsInfo.getDownloadDir()))
+                .filter(torrentsInfo -> ReUtil.contains(StringEnum.SEASON_REG, torrentsInfo.getName()))
+                .filter(torrentsInfo -> reName.equals(ReUtil.get(StringEnum.SEASON_REG, torrentsInfo.getName(), 0)))
+                .filter(torrentsInfo -> !item.getReName().equalsIgnoreCase(torrentsInfo.getName()))
+                .anyMatch(torrentsInfo -> {
+                    List<String> tags = torrentsInfo.getTags();
+                    return tags.contains(TorrentsTags.BACK_RSS.getValue()) ||
+                            !tags.contains(ani.getSubgroup());
+                });
+        if (hasStandbyTorrent) {
+            return true;
+        }
+
+        return listVideoFiles(savePath).stream()
+                .filter(file -> fileMatchesEpisode(ani, item, file))
+                .anyMatch(file -> !fileMatchesName(item, file));
+    }
+
+    private boolean isMasterReplaceStandbyMode(Item item) {
+        Config config = ConfigUtil.CONFIG;
+        Boolean standbyRss = config.getStandbyRss();
+        Boolean coexist = config.getCoexist();
+        return Boolean.TRUE.equals(item.getMaster()) &&
+                Boolean.TRUE.equals(standbyRss) &&
+                !Boolean.TRUE.equals(coexist);
     }
 
     /**
@@ -792,8 +831,9 @@ public class DownloadService {
 
         List<File> files = listVideoFiles(downloadPath);
 
+        boolean exactFile = isMasterReplaceStandbyMode(item);
         if (files.stream()
-                .anyMatch(file -> fileMatchesEpisode(ani, item, file))) {
+                .anyMatch(file -> exactFile ? fileMatchesName(item, file) : fileMatchesEpisode(ani, item, file))) {
             // 保存 torrent 下次只校验 torrent 是否存在 ， 可以将config设置到固态硬盘，防止一直唤醒机械硬盘
             if (!Boolean.TRUE.equals(multiEpisodeTorrent)) {
                 TorrentUtil.saveTorrent(ani, item);
@@ -802,6 +842,18 @@ public class DownloadService {
             return true;
         }
         return false;
+    }
+
+    private boolean fileMatchesName(Item item, File file) {
+        String reName = item.getReName();
+        if (StrUtil.isBlank(reName)) {
+            return false;
+        }
+        String mainName = FileUtil.mainName(file);
+        if (StrUtil.isBlank(mainName)) {
+            return false;
+        }
+        return reName.equalsIgnoreCase(mainName.trim());
     }
 
     private boolean fileMatchesEpisode(Ani ani, Item item, File file) {
